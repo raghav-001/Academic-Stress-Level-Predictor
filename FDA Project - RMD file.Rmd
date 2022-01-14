@@ -1,0 +1,386 @@
+---
+title: "FDA Project Final Report"
+output: html_document
+---
+## Title: Academic stress level predictor
+## Team members: 
+## Adittya C - 19BPS1069
+## V Raghav Anand - 19BCE1415
+## Faculty: Dr. Sweetlin Hemalatha C
+
+### Data preprocessing and descriptive analysis
+```{r}
+options(warn=-1)
+data <- read.csv("work-load management.csv")
+head(data)
+```
+
+
+### Renaming the columns more appropriately
+```{r}
+colnames(data) <- c('Timestamp','Sleep','Productivity','Screentime','Assignments','Deadline','Study','Stress')
+head(data)
+```
+
+
+```{r}
+data <- data[-c(1)]
+head(data)
+```
+
+
+```{r}
+df <- data[-c(144),]
+head(df)
+```
+
+### Performing descriptive analysis of the dataset
+```{r}
+tab1 <- table(df$Sleep)
+tab1
+pie(tab1,names(tab1),radius = 1, col = c('red','blue','yellow','green','black'),clockwise = T)
+
+```
+
+
+### Inference: We can see that a healthy number of people sleep more than 5 hours, however there is still a fraction of people sleeping less than 6 hours which is not ideally healthy
+
+
+
+```{r}
+tab <- table(df$Screentime)
+tab
+barplot(tab,xlab = 'Total Screentime (in hours)',ylab = 'Count', col = 'cyan', ylim = c(0,50))
+```
+
+
+
+### Inference: Screentime of the people, especially during the pandemic period, has been really high and is going beyond 8 hours
+
+
+
+```{r}
+tab3 <- table(df$Stress,df$Assignments)
+tab3
+barplot(tab3,xlab = 'No. of Assignments',ylab='Count',col = c('red','yellow','green'))
+legend("topleft",c("Highly Stressed","Manageable","No Stress"),cex=1.0,bty="n",fill=c('red','yellow','green'))
+```
+
+
+
+### Inference: We can see that most people manage upto 3 assignments per week without stress or with maneagable stress while the stress levels begin to increase beyond 3 assignments
+
+
+
+```{r}
+tab4 <- table(df$Productivity,df$Sleep)
+tab4
+barplot(tab4,xlab='Hours of sleep per day',ylab = 'Count', col = c('red','blue'))
+legend("topleft",c("Early Morning Risers","Late Night Owls"),cex=1.0,bty="n",fill=c('red','blue'))
+```
+
+
+### Inference: From the above bar graph it can be inferred that people who sleep less than 6 hours stay up longer at night than those who sleep for more than 5 hours, who on the contrary, are early morning risers
+
+
+
+### Replacing + and < symbol using gsub function (preprocessing of data)
+```{r}
+data$Screentime <- gsub("+", "", data$Screentime, fixed = TRUE)
+head(data)
+```
+
+```{r}
+data$Assignments <- gsub("+", "", data$Assignments, fixed = TRUE)
+head(data)
+```
+
+```{r}
+data$Sleep <- gsub("+", "", data$Sleep, fixed = TRUE)
+head(data)
+```
+
+```{r}
+data$Screentime <- gsub("<", "", data$Screentime, fixed = TRUE)
+head(data)
+```
+
+### Observing the number of records for each class in the dependent variable
+```{r}
+table(data$Stress)
+```
+### Oversampling the data due to the imbalance in the dataset for the "No stress" class
+```{r}
+library(dplyr)
+set.seed(1234)
+no_stress_data <- subset(data,Stress=="No stress")
+sample_no_stress_subset <- sample_n(no_stress_data,33)
+sample_no_stress_subset
+```
+
+```{r}
+set.seed(1234)
+new_data <- rbind.data.frame(data,sample_no_stress_subset)
+shuffled_data= new_data[sample(1:nrow(new_data)), ]
+head(shuffled_data)
+```
+
+
+### Shuffling the data after oversampling to train the model without bias
+```{r}
+data=shuffled_data
+table(data$Stress)
+```
+
+
+### Decision tree classification algorithm
+```{r}
+library(DAAG)
+library(party)
+library(rpart)
+library(rpart.plot)
+library(mlbench)
+library(caret)
+library(tree)
+data <- transform (data, 
+                   Sleep=as.integer(Sleep),
+                   Productivity=as.factor(Productivity),
+                   Screentime=as.factor(Screentime),
+                   Assignments=as.integer(Assignments),
+                   Deadline=as.factor(Deadline),
+                   Study=as.factor(Study),
+                   Stress=as.factor(Stress)
+                   )
+set.seed(1234)
+sample <- sample(1:nrow(data), ceiling(0.8*nrow(data)))
+train <- data[sample,]
+test <- data[-sample,]
+tree <- rpart(Stress ~., data = train)
+rpart.plot(tree)
+```
+
+
+### Inference: From the tree, we can see that the students who study regularly are under no stress, even more so, when the assignments given to them per week are less than or equal to 4. As the assignments keep increasing we see that the screentime increases and goes upto 7 or 8 hours as well, and that in turn has led to the prediction of the class to be "Highly stressed", while other cases are mostly predicting maneagable stress levels.
+
+
+
+### Predicted values
+```{r}
+t_pred = predict(tree,test,type="class")
+t_pred
+```
+
+## Performance metrics
+
+### Confusion matrix
+```{r}
+confMat <- table(factor(test$Stress),factor(t_pred))
+confMat
+```
+
+
+### Accuracy
+```{r}
+accuracy <- sum(diag(confMat))/sum(confMat)
+accuracy
+```
+
+### F1 Score
+```{r}
+library(MLmetrics)
+f1_dt= F1_Score(t_pred,test$Stress)
+print(f1_dt)
+```
+
+
+### We get an accuracy of 60.8% and an F1 score of 58.8% on applying the decision tree classification algorithm.
+
+
+### Function for transforming input data to feed it for testing using Decision tree algorithm
+```{r}
+transform_input <- function(user_input){
+colnames(user_input) <- c("Sleep","Productivity","Screentime","Assignments","Deadline","Study")
+user_input$Screentime <- gsub("+", "", user_input$Screentime, fixed = TRUE)
+user_input$Assignments <- gsub("+", "", user_input$Assignments, fixed = TRUE)
+user_input$Sleep <- gsub("+", "", user_input$Sleep, fixed = TRUE)
+user_input$Screentime <- gsub("<", "", user_input$Screentime, fixed = TRUE)
+user_input <- transform (user_input, 
+                   Sleep=as.integer(Sleep),
+                   Productivity=as.factor(Productivity),
+                   Screentime=as.factor(Screentime),
+                   Assignments=as.integer(Assignments),
+                   Deadline=as.factor(Deadline),
+                   Study=as.factor(Study)
+                   )
+return(user_input)
+}
+```
+
+
+### Taking custom user inputs and predicting the class using the decision tree model
+```{r}
+user_input=data.frame(6,"Early morning",3,1,"Yes","Regular study")
+test_input_1=transform_input(user_input)
+predict(tree,test_input_1,type="class")
+```
+### Prediction of the class for the above given input comes out to be "No stress"
+
+```{r}
+user_input=data.frame(5,"Early morning",4,3,"Yes","Occasional study")
+test_input_1=transform_input(user_input)
+predict(tree,test_input_1,type="class")
+```
+### Prediction of the class for the above given input comes out to be "Maneagable"
+
+
+```{r}
+user_input=data.frame(4,"Late night",3,5,"No","Occasional study")
+test_input_1=transform_input(user_input)
+predict(tree,test_input_1,type="class")
+```
+### Prediction of the class for the above given input comes out to be "Highly stressed"
+
+
+### Random Forest algorithm
+
+```{r}
+set.seed(1234)
+sample <- sample(1:nrow(data), ceiling(0.8*nrow(data)))
+train1 <- data[sample,]
+test1 <- data[-sample,]
+summary(train1)
+summary(test1)
+```
+
+### Training the model
+```{r}
+library(randomForest)
+set.seed(1234)
+rf <- randomForest(
+  Stress ~ .,
+  data=train1,
+  mtry=2
+)
+rf
+```
+
+### Predicting the values
+```{r}
+pred = predict(rf,test1,type="class")
+pred
+```
+
+## Performance metrics
+
+### Confusion matrix
+```{r}
+confMat1 <- table(factor(test1$Stress),factor(pred))
+confMat1
+```
+### Accuracy
+```{r}
+accuracy <- sum(diag(confMat1))/sum(confMat1)
+accuracy
+```
+
+### F1 Score
+```{r}
+
+f1_rf = F1_Score(pred,test1$Stress)
+print(f1_rf)
+```
+
+### Taking custom user inputs and predicting the class using the random forest model
+```{r}
+user_input=data.frame(6,"Early morning",3,1,"Yes","Regular study")
+test_input_1=transform_input(user_input)
+test_input_1 <- rbind(train1[1,1:6 ] , test_input_1)
+test_input_1 <- test_input_1[-1,]
+predict(rf,test_input_1,type="class")
+```
+### Prediction of the class for the above given input comes out to be "No stress"
+
+```{r}
+user_input=data.frame(5,"Early morning",4,3,"Yes","Occasional study")
+test_input_1=transform_input(user_input)
+test_input_1 <- rbind(train1[1,1:6 ] , test_input_1)
+test_input_1 <- test_input_1[-1,]
+predict(rf,test_input_1,type="class")
+```
+
+### Prediction of the class for the above given input comes out to be "Maneagable"
+
+```{r}
+user_input=data.frame(5,"Early morning",4,3,"No","Occasional study")
+test_input_1=transform_input(user_input)
+test_input_1 <- rbind(train1[1,1:6 ] , test_input_1)
+test_input_1 <- test_input_1[-1,]
+predict(rf,test_input_1,type="class")
+```
+
+### Prediction of the class for the above given input comes out to be "Highly stressed"
+
+
+
+### We get an accuracy of 76.08% and an F1 Score of 68.75% which implies that the random forest model has more true positives, true negatives when it classifies and less number of false positives, false negatives than the decision tree model that we obtained.
+
+
+### Adaboost algorithm
+
+```{r}
+library(adabag)
+library(caret)
+```
+```{r}
+set.seed(1234)
+model = boosting(Stress~., data=train, boos=TRUE, mfinal=100)
+pred = predict(model, test)
+conf_mat = pred$confusion
+conf_mat
+```
+
+```{r}
+accuracy <- sum(diag(conf_mat))/sum(conf_mat)
+accuracy
+```
+
+### Gradient boosting algorithm
+```{r}
+library(gbm)
+```
+
+```{r}
+set.seed(1234)
+mod_gbm = gbm(Stress ~.,
+              data = train,
+              distribution = "multinomial",
+              cv.folds = 10,
+              shrinkage = .01,
+              n.minobsinnode = 10,
+              n.trees = 200)
+ 
+print(mod_gbm)
+```
+
+```{r}
+set.seed(1234)
+pred = predict.gbm(object = mod_gbm,
+                   newdata = test,
+                   n.trees = 200,
+                   type = "response")
+
+```
+
+
+```{r}
+labels = colnames(pred)[apply(pred, 1, which.max)]
+cm = confusionMatrix(test$Stress, as.factor(labels))
+print(cm$table)
+```
+
+```{r}
+accuracy <- sum(diag(cm$table))/sum(cm$table)
+accuracy
+```
+
+### Thus, classification models for predicting the stress levels that academics have on a student has been built with best results and performance metrics coming from the Random Forest algorithm.
